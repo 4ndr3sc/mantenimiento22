@@ -74,9 +74,6 @@
             color: #0b3b71 !important; /* deep blue text */
             font-weight: 700;
         }
-        /* Force card selects to display only the selected option (avoid showing full option list inline) */
-        select.cardEstadoSelect option { display: none; }
-        select.cardEstadoSelect option:checked { display: block; }
         select.cardEstadoSelect { min-width: 140px; }
         aside .tab-btn { color: #0f172a; }
         /* Ensure interactive controls (buttons) remain blue and visible */
@@ -437,12 +434,14 @@
             </div>
 
             <div id="modalBitacora" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-                <div class="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-700 bg-gray-850 flex justify-between items-center">
+                <div class="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh]">
+                    <div class="px-6 py-4 border-b border-gray-700 bg-gray-850 flex justify-between items-center sticky top-0 z-10">
                         <h3 id="bitacoraEquipoNombre" class="text-base font-bold text-white">---</h3>
                         <button onclick="closeBitacoraModal()" class="text-gray-400 hover:text-white"><i class="fas fa-xmark"></i></button>
                     </div>
-                    <div class="p-6"><div id="timelineContenedor" class="relative border-l border-gray-700 ml-3 space-y-4"></div></div>
+                    <div class="p-6 overflow-y-auto max-h-[80vh]">
+                        <div id="timelineContenedor" class="relative border-l border-gray-700 ml-3 space-y-4 overflow-y-auto max-h-[70vh]"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -735,9 +734,11 @@
             // set modal estado select to current estado if present
             const estadoSel = document.getElementById('modalEstadoSelect');
             if (estadoSel) {
-                const currentEstado = el.getAttribute('data-estado') || 'En espera';
-                // try to set, otherwise leave default
-                try { estadoSel.value = currentEstado; } catch(e) { /* ignore */ }
+                const currentEstado = (el.getAttribute('data-estado') || 'En espera').trim();
+                try {
+                    estadoSel.value = currentEstado;
+                    Array.from(estadoSel.options).forEach(opt => opt.selected = opt.value === currentEstado);
+                } catch(e) { /* ignore */ }
             }
             // show overlay then slide panel in
             modalDetail.classList.remove('hidden');
@@ -838,7 +839,12 @@
         }
 
         function cambiarEstadoCard(equipoId, nuevoEstado, el) {
-            if (!confirm('Confirmar cambio de estado?')) return;
+            const card = el ? el.closest('[data-id]') : null;
+            const prevEstado = card ? card.getAttribute('data-estado') : null;
+            if (!confirm('Confirmar cambio de estado?')) {
+                if (el && prevEstado !== null) el.value = prevEstado;
+                return;
+            }
             const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const comentario = document.getElementById('modalComentario') ? document.getElementById('modalComentario').value : '';
             fetch(`/equipos/${equipoId}/estado`, {
@@ -942,8 +948,11 @@
                     }
                 } catch(e) { console.error(e); }
 
+                if (el && typeof el.blur === 'function') el.blur();
                 alert('Estado actualizado');
-            }).catch(e => { console.error(e); alert('No se pudo actualizar el estado'); });
+            }).catch(e => { console.error(e); 
+                if (el && prevEstado !== null) el.value = prevEstado;
+                alert('No se pudo actualizar el estado'); });
         }
 
         function cambiarEstadoDesdeModal(nuevoEstado) {
@@ -962,7 +971,13 @@
             }).then(data => {
                 // actualizar modal
                 document.getElementById('detFalla').innerText = document.getElementById('detFalla').innerText; // no-op to keep field
-                document.getElementById('modalEstadoSelect').value = data.equipo.estado;
+                const modalEstadoSelect = document.getElementById('modalEstadoSelect');
+                if (modalEstadoSelect) {
+                    const estadoValue = (data.equipo.estado || '').trim();
+                    modalEstadoSelect.value = estadoValue;
+                    Array.from(modalEstadoSelect.options).forEach(opt => opt.selected = opt.value === estadoValue);
+                    if (typeof modalEstadoSelect.blur === 'function') modalEstadoSelect.blur();
+                }
                 // actualizar todas las tarjetas que correspondan a este equipo
                 try {
                     const cards = document.querySelectorAll(`[data-id='eq-${equipoId}']`);
